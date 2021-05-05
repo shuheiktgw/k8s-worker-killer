@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-worker-killer
+  namespace: kube-system
+  labels:
+    app: k8s-worker-killer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: k8s-worker-killer
+  template:
+    metadata:
+      labels:
+        app: k8s-worker-killer
+    spec:
+      serviceAccountName: k8s-worker-killer
+      containers:
+        - name: k8s-worker-killer
+          image: shuheiktgw/k8s-worker-killer:0.0.1-alpha
+          command:
+            - /k8s-worker-killer
+            - --cloud-provider=aws
+            - -v=4
