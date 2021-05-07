@@ -87,6 +87,11 @@ func (k *BasicKiller) Run() error {
 		}
 	}
 
+	if len(candidates) == 0 {
+		klog.V(1).Infof("No candidate node has been found")
+		return nil
+	}
+
 	klog.V(4).Infof("Candidate count: %v", len(candidates))
 
 	pdbs, err := k.listerRegistry.PodDisruptionBudgetLister().List()
