@@ -67,14 +67,14 @@ func getInstanceId(node *apiv1.Node) (string, error) {
 func getRegion() string {
 	sess, err := session.NewSession()
 	if err != nil {
-		klog.Errorf("Error getting AWS session while retrieving region: %w", err)
+		klog.Errorf("Error getting AWS session while retrieving region: %v", err)
 		return ""
 	}
 
 	svc := ec2metadata.New(sess)
 	region, err := svc.Region()
 	if err != nil {
-		klog.Errorf("Error getting ec2 metadata: %w", err)
+		klog.Errorf("Error getting ec2 metadata: %v", err)
 		return ""
 	}
 

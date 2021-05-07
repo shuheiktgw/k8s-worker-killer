@@ -62,7 +62,7 @@ func NewBasicKiller(options *config.KillingOptions, registry kube_util.ListerReg
 func (k *BasicKiller) Run() error {
 	nodes, err := k.listerRegistry.ReadyNodeLister().List()
 	if err != nil {
-		klog.Errorf("Unable to list ready nodes: %w", err)
+		klog.Errorf("Unable to list ready nodes: %v", err)
 		return err
 	}
 
@@ -96,13 +96,13 @@ func (k *BasicKiller) Run() error {
 
 	pdbs, err := k.listerRegistry.PodDisruptionBudgetLister().List()
 	if err != nil {
-		klog.Errorf("Unable to list pdbs: %w", err)
+		klog.Errorf("Unable to list pdbs: %v", err)
 		return err
 	}
 
 	podsOnNodes, err := k.getPodsOnNodes()
 	if err != nil {
-		klog.Errorf("Unable to list pods on nodes: %w", err)
+		klog.Errorf("Unable to list pods on nodes: %v", err)
 		return err
 	}
 
@@ -116,12 +116,12 @@ func (k *BasicKiller) Run() error {
 		// TODO: make those arguments configurable
 		pods, _, err := drain.GetPodsForDeletionOnNodeDrain(podsOnNodes[candidate.Name], pdbs, false, false, false, k.listerRegistry, 0, time.Now())
 		if err != nil {
-			klog.Errorf("Unable to get pods for deletion on node %s: %w", candidate.Name, err)
+			klog.Errorf("Unable to get pods for deletion on node %s: %v", candidate.Name, err)
 			continue
 		}
 
 		if _, err := checkPdbs(pods, pdbs); err != nil {
-			klog.Warningf("Pdb check failed on node %s: %w", candidate.Name, err)
+			klog.Warningf("Pdb check failed on node %s: %v", candidate.Name, err)
 			continue
 		}
 
@@ -135,7 +135,7 @@ func (k *BasicKiller) Run() error {
 
 		result := k.deleteNode(candidate, podsToEvict)
 		if result.ResultType != status.NodeDeleteOk {
-			klog.Errorf("Failed to delete node %s: %w", candidate.Name, result.Err)
+			klog.Errorf("Failed to delete node %s: %v", candidate.Name, result.Err)
 			continue
 		}
 
@@ -335,7 +335,7 @@ func checkPdbs(pods []*apiv1.Pod, pdbs []*policyv1.PodDisruptionBudget) (*drain.
 func (k *BasicKiller) ExitCleanUp() {
 	nodes, err := k.listerRegistry.ReadyNodeLister().List()
 	if err != nil {
-		klog.Errorf("Failed to list ready nodes: %w", err)
+		klog.Errorf("Failed to list ready nodes: %v", err)
 		return
 	}
 
