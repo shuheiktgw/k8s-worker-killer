@@ -47,7 +47,6 @@ type BasicKiller struct {
 	clientSet      kube_client.Interface
 	recorder       kube_record.EventRecorder
 	cloudprocider  cloudprovider.CloudProvider
-	initialized    bool
 }
 
 func NewBasicKiller(options *config.KillingOptions, registry kube_util.ListerRegistry, client kube_client.Interface, recorder kube_record.EventRecorder, provider cloudprovider.CloudProvider) Killer {
@@ -61,11 +60,6 @@ func NewBasicKiller(options *config.KillingOptions, registry kube_util.ListerReg
 }
 
 func (k *BasicKiller) Run() error {
-	if err := k.initialCleanUp(); err != nil {
-		klog.Errorf("Unable to run initial cleanup: %w", err)
-		return err
-	}
-
 	nodes, err := k.listerRegistry.ReadyNodeLister().List()
 	if err != nil {
 		klog.Errorf("Unable to list ready nodes: %w", err)
@@ -143,22 +137,6 @@ func (k *BasicKiller) Run() error {
 		time.Sleep(k.options.KillDelayAfterDelete)
 		targetCount -= 1
 	}
-
-	return nil
-}
-
-func (k *BasicKiller) initialCleanUp() error {
-	if k.initialized {
-		return nil
-	}
-
-	nodes, err := k.listerRegistry.ReadyNodeLister().List()
-	if err != nil {
-		return err
-	}
-
-	taint.CleanAllToBeDeleted(nodes, k.clientSet, k.recorder)
-	k.initialized = true
 
 	return nil
 }
