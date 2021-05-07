@@ -78,7 +78,7 @@ func (k *BasicKiller) Run() error {
 
 	for _, node := range nodes {
 		creationTimestamp := node.GetCreationTimestamp()
-		klog.V(4).Infof("Node (%s) creation timestamp: %v", node.GetName(), creationTimestamp)
+		klog.V(4).Infof("Inspecting node %s. Creation timestamp: %v", node.GetName(), creationTimestamp)
 
 		if creationTimestamp.Add(k.options.MaxAge).Before(now) {
 			candidates = append(candidates, node)
@@ -139,6 +139,7 @@ func (k *BasicKiller) Run() error {
 			continue
 		}
 
+		klog.V(4).Infof("Node %s has been deleted successfully", candidate.Name)
 		time.Sleep(k.options.KillDelayAfterDelete)
 		targetCount -= 1
 	}
