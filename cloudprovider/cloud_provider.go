@@ -15,6 +15,6 @@ const (
 
 // CloudProvider contains functions for interacting with cloud provider.
 type CloudProvider interface {
-	// DeleteNode deletes a node for this cloud provider.
+	// DeleteNode deletes node for this cloud provider.
 	DeleteNode(node *apiv1.Node) error
 }
