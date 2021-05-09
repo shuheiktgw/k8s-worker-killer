@@ -2,10 +2,10 @@ package aws
 
 import (
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/shuheiktgw/k8s-worker-killer/cloudprovider"
@@ -20,11 +20,34 @@ func Build() (cloudprovider.CloudProvider, error) {
 		return nil, fmt.Errorf("failed to create new session: %w", err)
 	}
 
-	return &CloudProvider{ec2: ec2.New(sess)}, nil
+	return &CloudProvider{Ec2Service: &ec2Wrapper{ec2: ec2.New(sess)}}, nil
 }
 
 type CloudProvider struct {
+	Ec2Service ec2Service
+}
+
+type ec2Service interface {
+	TerminateInstances([]string) error
+	WaitUntilInstanceTerminated([]string) error
+}
+
+type ec2Wrapper struct {
 	ec2 *ec2.EC2
+}
+
+func (e *ec2Wrapper) TerminateInstances(ids []string) error {
+	_, err := e.ec2.TerminateInstances(&ec2.TerminateInstancesInput{
+		InstanceIds: aws.StringSlice(ids),
+	})
+
+	return err
+}
+
+func (e *ec2Wrapper) WaitUntilInstanceTerminated(ids []string) error {
+	return e.ec2.WaitUntilInstanceTerminated(&ec2.DescribeInstancesInput{
+		InstanceIds: aws.StringSlice(ids),
+	})
 }
 
 func (c *CloudProvider) DeleteNode(node *apiv1.Node) error {
@@ -35,19 +58,19 @@ func (c *CloudProvider) DeleteNode(node *apiv1.Node) error {
 
 	klog.V(1).Infof("Terminating ec2 instance %s", id)
 
-	_, err = c.ec2.TerminateInstances(&ec2.TerminateInstancesInput{
-		InstanceIds: []*string{aws.String(id)},
-	})
-
+	err = c.Ec2Service.TerminateInstances([]string{id})
 	if err != nil {
 		return fmt.Errorf("failed to terminate instance %s: %w", id, err)
 	}
 
 	klog.V(1).Infof("Waiting for ec2 instance %s termination", id)
 
-	return c.ec2.WaitUntilInstanceTerminated(&ec2.DescribeInstancesInput{
-		InstanceIds: []*string{aws.String(id)},
-	})
+	err = c.Ec2Service.WaitUntilInstanceTerminated([]string{id})
+	if err != nil {
+		return fmt.Errorf("failed to wait instance termination %s: %w", id, err)
+	}
+
+	return nil
 }
 
 func getInstanceId(node *apiv1.Node) (string, error) {
