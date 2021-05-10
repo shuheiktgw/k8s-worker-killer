@@ -1,5 +1,5 @@
 // Originally from https://github.com/kubernetes/autoscaler/blob/655b4081f424b3d2dfd5cc2f155f6c2a81d6416b/cluster-autoscaler/utils/deletetaint/delete.go
-package taint
+package core
 
 import (
 	"context"
@@ -18,16 +18,34 @@ const ToBeDeletedTaint = "ToBeDeletedByK8sWorkerKiller"
 
 // Mutable only in unit tests
 var (
-	maxRetryDeadline      time.Duration = 5 * time.Second
-	conflictRetryInterval time.Duration = 750 * time.Millisecond
+	maxRetryDeadline      = 5 * time.Second
+	conflictRetryInterval = 750 * time.Millisecond
 )
 
-// MarkToBeDeleted sets a taint that makes the node unschedulable.
-func MarkToBeDeleted(node *apiv1.Node, client kube_client.Interface) error {
-	return addTaint(node, client, ToBeDeletedTaint, apiv1.TaintEffectNoSchedule)
+type Tainter interface {
+	MarkToBeDeleted(node *apiv1.Node) error
+	CleanToBeDeleted(node *apiv1.Node) (bool, error)
+	CleanAllToBeDeleted(nodes []*apiv1.Node)
 }
 
-func addTaint(node *apiv1.Node, client kube_client.Interface, taintKey string, effect apiv1.TaintEffect) error {
+func NewTainterImpl(clientSet kube_client.Interface, recorder kube_record.EventRecorder) Tainter {
+	return &TainterImpl{
+		clientSet: clientSet,
+		recorder:  recorder,
+	}
+}
+
+type TainterImpl struct {
+	clientSet kube_client.Interface
+	recorder  kube_record.EventRecorder
+}
+
+// MarkToBeDeleted sets a taint that makes the node unschedulable.
+func (t *TainterImpl) MarkToBeDeleted(node *apiv1.Node) error {
+	return t.addTaint(node, ToBeDeletedTaint, apiv1.TaintEffectNoSchedule)
+}
+
+func (t *TainterImpl) addTaint(node *apiv1.Node, taintKey string, effect apiv1.TaintEffect) error {
 	retryDeadline := time.Now().Add(maxRetryDeadline)
 	freshNode := node.DeepCopy()
 	var err error
@@ -35,7 +53,7 @@ func addTaint(node *apiv1.Node, client kube_client.Interface, taintKey string, e
 	for {
 		if refresh {
 			// Get the newest version of the node.
-			freshNode, err = client.CoreV1().Nodes().Get(context.TODO(), node.Name, metav1.GetOptions{})
+			freshNode, err = t.clientSet.CoreV1().Nodes().Get(context.TODO(), node.Name, metav1.GetOptions{})
 			if err != nil || freshNode == nil {
 				klog.Warningf("Error while adding %v taint on node %v: %v", taintKey, node.Name, err)
 				return fmt.Errorf("failed to get node %v: %v", node.Name, err)
@@ -50,7 +68,7 @@ func addTaint(node *apiv1.Node, client kube_client.Interface, taintKey string, e
 			}
 			return nil
 		}
-		_, err = client.CoreV1().Nodes().Update(context.TODO(), freshNode, metav1.UpdateOptions{})
+		_, err = t.clientSet.CoreV1().Nodes().Update(context.TODO(), freshNode, metav1.UpdateOptions{})
 		if err != nil && errors.IsConflict(err) && time.Now().Before(retryDeadline) {
 			refresh = true
 			time.Sleep(conflictRetryInterval)
@@ -82,11 +100,11 @@ func addTaintToSpec(node *apiv1.Node, taintKey string, effect apiv1.TaintEffect)
 }
 
 // CleanToBeDeleted cleans CA's NoSchedule taint from a node.
-func CleanToBeDeleted(node *apiv1.Node, client kube_client.Interface) (bool, error) {
-	return cleanTaint(node, client, ToBeDeletedTaint)
+func (t *TainterImpl) CleanToBeDeleted(node *apiv1.Node) (bool, error) {
+	return t.cleanTaint(node, ToBeDeletedTaint)
 }
 
-func cleanTaint(node *apiv1.Node, client kube_client.Interface, taintKey string) (bool, error) {
+func (t *TainterImpl) cleanTaint(node *apiv1.Node, taintKey string) (bool, error) {
 	retryDeadline := time.Now().Add(maxRetryDeadline)
 	freshNode := node.DeepCopy()
 	var err error
@@ -94,7 +112,7 @@ func cleanTaint(node *apiv1.Node, client kube_client.Interface, taintKey string)
 	for {
 		if refresh {
 			// Get the newest version of the node.
-			freshNode, err = client.CoreV1().Nodes().Get(context.TODO(), node.Name, metav1.GetOptions{})
+			freshNode, err = t.clientSet.CoreV1().Nodes().Get(context.TODO(), node.Name, metav1.GetOptions{})
 			if err != nil || freshNode == nil {
 				klog.Warningf("Error while adding %v taint on node %v: %v", taintKey, node.Name, err)
 				return false, fmt.Errorf("failed to get node %v: %v", node.Name, err)
@@ -118,7 +136,7 @@ func cleanTaint(node *apiv1.Node, client kube_client.Interface, taintKey string)
 		}
 
 		freshNode.Spec.Taints = newTaints
-		_, err = client.CoreV1().Nodes().Update(context.TODO(), freshNode, metav1.UpdateOptions{})
+		_, err = t.clientSet.CoreV1().Nodes().Update(context.TODO(), freshNode, metav1.UpdateOptions{})
 
 		if err != nil && errors.IsConflict(err) && time.Now().Before(retryDeadline) {
 			refresh = true
@@ -136,21 +154,21 @@ func cleanTaint(node *apiv1.Node, client kube_client.Interface, taintKey string)
 }
 
 // CleanAllToBeDeleted cleans ToBeDeleted taints from given nodes.
-func CleanAllToBeDeleted(nodes []*apiv1.Node, client kube_client.Interface, recorder kube_record.EventRecorder) {
-	cleanAllTaints(nodes, client, recorder, ToBeDeletedTaint)
+func (t *TainterImpl) CleanAllToBeDeleted(nodes []*apiv1.Node) {
+	t.cleanAllTaints(nodes, ToBeDeletedTaint)
 }
 
-func cleanAllTaints(nodes []*apiv1.Node, client kube_client.Interface, recorder kube_record.EventRecorder, taintKey string) {
+func (t *TainterImpl) cleanAllTaints(nodes []*apiv1.Node, taintKey string) {
 	for _, node := range nodes {
 		if !hasTaint(node, taintKey) {
 			continue
 		}
-		cleaned, err := cleanTaint(node, client, taintKey)
+		cleaned, err := t.cleanTaint(node, taintKey)
 		if err != nil {
-			recorder.Eventf(node, apiv1.EventTypeWarning, "ClusterAutoscalerCleanup",
+			t.recorder.Eventf(node, apiv1.EventTypeWarning, "ClusterAutoscalerCleanup",
 				"failed to clean %v on node %v: %v", taintKey, node.Name, err)
 		} else if cleaned {
-			recorder.Eventf(node, apiv1.EventTypeNormal, "ClusterAutoscalerCleanup",
+			t.recorder.Eventf(node, apiv1.EventTypeNormal, "ClusterAutoscalerCleanup",
 				"removed %v taint from node %v", taintKey, node.Name)
 		}
 	}

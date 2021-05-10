@@ -223,6 +223,8 @@ func buildKiller(client kube_client.Interface, recorder kube_record.EventRecorde
 	if err != nil {
 		klog.Fatalf("Failed to initialize cloud provider: %w", err)
 	}
+	tainter := core.NewTainterImpl(client, recorder)
+	scaler := core.NewScalerImpl(client, provider, recorder, tainter)
 
-	return core.NewBasicKiller(options, listerRegistry, client, recorder, provider)
+	return core.NewBasicKiller(listerRegistry, options, scaler, tainter)
 }
