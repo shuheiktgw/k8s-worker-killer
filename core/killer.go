@@ -55,11 +55,10 @@ func (k *BasicKiller) Run() error {
 
 	var candidates []*apiv1.Node
 	now := time.Now()
-	klog.V(4).Infof("Current timestamp: %v", now)
 
 	for _, node := range nodes {
 		creationTimestamp := node.GetCreationTimestamp()
-		klog.V(4).Infof("Inspecting node %s. Creation timestamp: %v", node.GetName(), creationTimestamp)
+		klog.V(4).Infof("Node %s age: %v", node.GetName(), now.Sub(creationTimestamp.Time))
 
 		if creationTimestamp.Add(k.options.MaxAge).Before(now) {
 			candidates = append(candidates, node)
