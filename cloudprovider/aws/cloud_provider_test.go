@@ -34,7 +34,7 @@ func (e *ec2ServiceMock) WaitUntilInstanceTerminated(ids []string) error {
 	return e.MockWaitUntilInstanceTerminated(ids)
 }
 
-func TestCloudProviderDeleteNode(t *testing.T) {
+func TestCloudProvider_DeleteNode(t *testing.T) {
 	tests := []struct {
 		name       string
 		ec2Service *ec2ServiceMock
@@ -50,7 +50,7 @@ func TestCloudProviderDeleteNode(t *testing.T) {
 			errString: "failed to retrieve instance id from node : unexpected provider id: invalid",
 		},
 		{
-			name:       "instance termination failure",
+			name: "instance termination failure",
 			ec2Service: &ec2ServiceMock{
 				MockTerminateInstances: func(ids []string) error {
 					return errors.New("termination error")
@@ -62,7 +62,7 @@ func TestCloudProviderDeleteNode(t *testing.T) {
 			errString: "failed to terminate instance test: termination error",
 		},
 		{
-			name:       "instance termination wait failure",
+			name: "instance termination wait failure",
 			ec2Service: &ec2ServiceMock{
 				MockTerminateInstances: func(ids []string) error {
 					return nil
@@ -77,7 +77,7 @@ func TestCloudProviderDeleteNode(t *testing.T) {
 			errString: "failed to wait instance termination test: wait error",
 		},
 		{
-			name:       "success",
+			name: "success",
 			ec2Service: &ec2ServiceMock{
 				MockTerminateInstances: func(ids []string) error {
 					return nil
@@ -97,9 +97,13 @@ func TestCloudProviderDeleteNode(t *testing.T) {
 			provider := aws.CloudProvider{Ec2Service: tt.ec2Service}
 			err := provider.DeleteNode(tt.node)
 
-			if len(tt.errString) != 0 {
-				assert.EqualError(t, err, tt.errString)
-				return
+			if err != nil {
+				if len(tt.errString) != 0 {
+					assert.EqualError(t, err, tt.errString)
+					return
+				}
+
+				t.Errorf("unexpected error occurred: %v", err)
 			}
 		})
 	}
