@@ -5,6 +5,7 @@ go 1.16
 require (
 	github.com/aws/aws-sdk-go v1.38.33
 	github.com/go-sql-driver/mysql v1.5.0 // indirect
+	github.com/stretchr/testify v1.4.0
 	k8s.io/api v0.19.1
 	k8s.io/apimachinery v0.19.1
 	k8s.io/autoscaler/cluster-autoscaler v0.0.0-20201102134912-3ad33930b5f4
