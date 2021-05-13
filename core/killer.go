@@ -9,13 +9,8 @@ import (
 	"github.com/shuheiktgw/k8s-worker-killer/config"
 
 	apiv1 "k8s.io/api/core/v1"
-	policyv1 "k8s.io/api/policy/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/status"
-	"k8s.io/autoscaler/cluster-autoscaler/utils/drain"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
-	pod_util "k8s.io/autoscaler/cluster-autoscaler/utils/pod"
 	"k8s.io/klog/v2"
 )
 
@@ -27,14 +22,16 @@ type Killer interface {
 type BasicKiller struct {
 	listerRegistry kube_util.ListerRegistry
 	options        *config.KillingOptions
+	drainer        Drainer
 	scaler         Scaler
 	tainter        Tainter
 }
 
-func NewBasicKiller(registry kube_util.ListerRegistry, options *config.KillingOptions, scaler Scaler, tainter Tainter) Killer {
+func NewBasicKiller(registry kube_util.ListerRegistry, options *config.KillingOptions, drainer Drainer, scaler Scaler, tainter Tainter) Killer {
 	return &BasicKiller{
 		listerRegistry: registry,
 		options:        options,
+		drainer:        drainer,
 		scaler:         scaler,
 		tainter:        tainter,
 	}
@@ -93,24 +90,11 @@ func (k *BasicKiller) Run() error {
 		if targetCount < 1 {
 			break
 		}
-		// TODO: make those arguments configurable
-		pods, _, err := drain.GetPodsForDeletionOnNodeDrain(podsOnNodes[candidate.Name], pdbs, false, false, false, k.listerRegistry, 0, time.Now())
+
+		podsToEvict, err := k.drainer.GetPodsToEvict(podsOnNodes[candidate.Name], pdbs)
 		if err != nil {
-			klog.Errorf("Unable to get pods for deletion on node %s: %v", candidate.Name, err)
+			klog.Errorf("Failed to get pods to evict on node %s: %v", candidate.Name, err)
 			continue
-		}
-
-		if _, err := checkPdbs(pods, pdbs); err != nil {
-			klog.Warningf("Pdb check failed on node %s: %v", candidate.Name, err)
-			continue
-		}
-
-		podsToEvict := make([]*apiv1.Pod, 0)
-
-		for _, pod := range pods {
-			if !pod_util.IsDaemonSetPod(pod) {
-				podsToEvict = append(podsToEvict, pod)
-			}
 		}
 
 		result := k.scaler.DeleteNode(candidate, podsToEvict)
@@ -138,32 +122,13 @@ func (k *BasicKiller) targetCount(total int) float64 {
 func (k *BasicKiller) getPodsOnNodes() (map[string][]*apiv1.Pod, error) {
 	pods, err := k.listerRegistry.ScheduledPodLister().List()
 	if err != nil {
-		return nil, fmt.Errorf("unable to list pods on nodes: %w", err)
+		return nil, fmt.Errorf("unable to list scheduled pods on nodes: %w", err)
 	}
 	podsOnNodes := map[string][]*apiv1.Pod{}
 	for _, p := range pods {
 		podsOnNodes[p.Spec.NodeName] = append(podsOnNodes[p.Spec.NodeName], p)
 	}
 	return podsOnNodes, nil
-}
-
-// Originally from https://github.com/kubernetes/autoscaler/blob/73a5cdf928d3b04ac5cbc456a60d5eb084f9cbc1/cluster-autoscaler/simulator/drain.go#L93-L109
-func checkPdbs(pods []*apiv1.Pod, pdbs []*policyv1.PodDisruptionBudget) (*drain.BlockingPod, error) {
-	// TODO: make it more efficient.
-	for _, pdb := range pdbs {
-		selector, err := metav1.LabelSelectorAsSelector(pdb.Spec.Selector)
-		if err != nil {
-			return nil, err
-		}
-		for _, pod := range pods {
-			if pod.Namespace == pdb.Namespace && selector.Matches(labels.Set(pod.Labels)) {
-				if pdb.Status.DisruptionsAllowed < 1 {
-					return &drain.BlockingPod{Pod: pod, Reason: drain.NotEnoughPdb}, fmt.Errorf("not enough pod disruption budget to move %s/%s", pod.Namespace, pod.Name)
-				}
-			}
-		}
-	}
-	return nil, nil
 }
 
 func (k *BasicKiller) ExitCleanUp() {

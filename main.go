@@ -3,8 +3,6 @@ package main
 import (
 	ctx "context"
 	"flag"
-	"github.com/shuheiktgw/k8s-worker-killer/cloudprovider"
-	"github.com/shuheiktgw/k8s-worker-killer/cloudprovider/builder"
 	"net/url"
 	"os"
 	"os/signal"
@@ -12,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/shuheiktgw/k8s-worker-killer/cloudprovider"
+	"github.com/shuheiktgw/k8s-worker-killer/cloudprovider/builder"
 	"github.com/shuheiktgw/k8s-worker-killer/config"
 	"github.com/shuheiktgw/k8s-worker-killer/core"
 	"github.com/shuheiktgw/k8s-worker-killer/version"
@@ -223,8 +223,9 @@ func buildKiller(client kube_client.Interface, recorder kube_record.EventRecorde
 	if err != nil {
 		klog.Fatalf("Failed to initialize cloud provider: %w", err)
 	}
+	drainer := core.NewDrainerImpl(listerRegistry)
 	tainter := core.NewTainterImpl(client, recorder)
 	scaler := core.NewScalerImpl(client, provider, recorder, tainter)
 
-	return core.NewBasicKiller(listerRegistry, options, scaler, tainter)
+	return core.NewBasicKiller(listerRegistry, options, drainer, scaler, tainter)
 }
